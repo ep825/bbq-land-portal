@@ -29,20 +29,21 @@ def load_data():
 
     all_dfs = []
     source_cols = {} 
-    load_status = {} # This will tell us exactly why a file failed
+    load_status = {} 
 
     for name, path in file_configs.items():
         if not os.path.exists(path):
-            load_status[name] = "❌ File Not Found (Check capitalization)"
+            load_status[name] = "❌ File Not Found"
             continue
         
         try:
+            # Added utf-8-sig to fix the invisible CSV character issue
             df = pd.read_csv(path, encoding='utf-8-sig')
             
-            # Strip hidden spaces from column names (e.g. " Date " becomes "Date")
+            # Strip hidden spaces from column names
             df.columns = df.columns.str.strip()
             
-            # Create a lowercase map to find Date/Month even if it's spelled "date" or "MONTH"
+            # Create a lowercase map to find Date/Month
             col_lower = {c.lower(): c for c in df.columns}
             
             if 'date' in col_lower:
@@ -119,19 +120,35 @@ df = master_df[master_df['Month'].isin(active_months)].copy()
 df = df.sort_values(by='Month')
 view_df = df[['Month'] + selected_cols].copy()
 
-# Live Graph
+# 1. Live Graph
 st.subheader("📈 Financial Trends")
 graph_data = view_df.groupby('Month', observed=True)[selected_cols].sum()
 st.line_chart(graph_data)
 
-# Detailed Data Table
+# 2. Detailed Data Table (CHUNKED FIX)
 st.subheader("📊 Detailed Data")
-totals = {"Month": "TOTAL"}
-for col in selected_cols:
-    val = pd.to_numeric(view_df[col], errors='coerce').sum()
-    totals[col] = val
 
-totals_df = pd.DataFrame([totals])
-final_df = pd.concat([view_df, totals_df], ignore_index=True)
+# How many columns to show per table before breaking to a new one
+cols_per_table = 6 
 
-st.dataframe(final_df, use_container_width=True, hide_index=True)
+# Break the selected categories into manageable chunks
+chunks = [selected_cols[i:i + cols_per_table] for i in range(0, len(selected_cols), cols_per_table)]
+
+for chunk in chunks:
+    current_cols = ['Month'] + chunk
+    temp_df = view_df[current_cols].copy()
+    
+    # Calculate Totals for this specific chunk
+    totals = {"Month": "TOTAL"}
+    for col in chunk:
+        totals[col] = pd.to_numeric(temp_df[col], errors='coerce').sum()
+        
+    # Attach the totals row
+    totals_df = pd.DataFrame([totals])
+    final_chunk_df = pd.concat([temp_df, totals_df], ignore_index=True)
+    
+    # Render the table
+    st.dataframe(final_chunk_df, use_container_width=True, hide_index=True)
+    
+    # Add a little space between tables
+    st.write("")

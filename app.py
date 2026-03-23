@@ -16,7 +16,10 @@ file_configs = {
     "Category": "Category.csv"
 }
 
-# 2. Data Loader (Cached so it's lightning fast on the web)
+# Create our strict calendar reference
+all_months = list(calendar.month_name)[1:]
+
+# 2. Data Loader
 @st.cache_data
 def load_data():
     def clean_currency(x):
@@ -61,6 +64,9 @@ def load_data():
     for next_df in all_dfs[1:]:
         master_df = pd.merge(master_df, next_df, on='Month', how='outer')
         
+    # THE FIX: Force the Month column into a strict chronological category
+    master_df['Month'] = pd.Categorical(master_df['Month'], categories=all_months, ordered=True)
+        
     return master_df, source_cols
 
 # Load the data
@@ -72,10 +78,11 @@ if master_df.empty:
 
 # --- SIDEBAR CONTROLS ---
 st.sidebar.header("1. Select Months")
-all_months = list(calendar.month_name)[1:]
 
-# Multiselect natively handles selecting, searching, and clearing
 active_months = st.sidebar.multiselect("Filter by Month:", all_months, default=[])
+
+# THE FIX PART 2: Force the toggled items into chronological order instantly
+active_months.sort(key=lambda m: all_months.index(m))
 
 st.sidebar.divider()
 st.sidebar.header("2. Select Categories")
@@ -91,18 +98,16 @@ if not active_months or not selected_cols:
     st.info("👈 Please select at least one Month and one Category from the sidebar to view your data.")
     st.stop()
 
-# Filter Data chronologically
+# Filter Data (Because it's Categorical, .sort_values() automatically uses calendar order)
 df = master_df[master_df['Month'].isin(active_months)].copy()
-df['Month_Idx'] = df['Month'].apply(lambda x: all_months.index(x) if x in all_months else 99)
-df = df.sort_values(by='Month_Idx').drop(columns=['Month_Idx'])
+df = df.sort_values(by='Month')
 
 view_df = df[['Month'] + selected_cols].copy()
 
-# 1. Live Graph (Streamlit handles the drawing automatically)
+# 1. Live Graph
 st.subheader("📈 Financial Trends")
-graph_data = view_df.groupby('Month')[selected_cols].sum()
-month_order = [m for m in all_months if m in active_months]
-graph_data = graph_data.reindex(month_order)
+# Setting observed=True ensures we only graph the months you selected, not empty ones
+graph_data = view_df.groupby('Month', observed=True)[selected_cols].sum()
 st.line_chart(graph_data)
 
 # 2. Detailed Data Table
@@ -118,5 +123,4 @@ for col in selected_cols:
 totals_df = pd.DataFrame([totals])
 final_df = pd.concat([view_df, totals_df], ignore_index=True)
 
-# Streamlit's native dataframe allows sorting and expanding
 st.dataframe(final_df, use_container_width=True, hide_index=True)

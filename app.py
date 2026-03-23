@@ -37,7 +37,7 @@ def load_data():
             continue
         
         try:
-            df = pd.read_csv(path)
+            df = pd.read_csv(path, encoding='utf-8-sig')
             
             # Strip hidden spaces from column names (e.g. " Date " becomes "Date")
             df.columns = df.columns.str.strip()

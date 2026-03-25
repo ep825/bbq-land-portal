@@ -22,7 +22,6 @@ def load_data():
     def clean_currency(x):
         if isinstance(x, str):
             try:
-                # This handles both "$1,000.00" and negative "-$1,000.00" formats
                 return float(x.replace('$', '').replace(',', '').strip())
             except ValueError:
                 return x
@@ -41,19 +40,23 @@ def load_data():
             df = pd.read_csv(path, encoding='utf-8-sig')
             df.columns = df.columns.str.strip()
             
-            col_lower = {c.lower(): c for c in df.columns}
+            df = df.loc[:, ~df.columns.str.contains('^Unnamed')]
             
-            if 'date' in col_lower:
-                actual_date_col = col_lower['date']
-                df['Month'] = pd.to_datetime(df[actual_date_col], errors='coerce').dt.month_name()
-                df = df.drop(columns=[actual_date_col])
-            elif 'month' in col_lower:
-                actual_month_col = col_lower['month']
-                if actual_month_col != 'Month':
-                    df = df.rename(columns={actual_month_col: 'Month'})
-            else:
-                errors.append(f"{path} is missing a Date/Month column.")
+            time_col = None
+            for col in df.columns:
+                if col.lower() in ['date', 'month']:
+                    time_col = col
+                    break
+                    
+            if not time_col:
+                errors.append(f"{path} is missing a Date or Month column.")
                 continue
+            
+            df = df.rename(columns={time_col: 'Month'})
+            df['Month'] = df['Month'].astype(str).str.strip().str.title()
+            
+            df = df.dropna(subset=['Month'])
+            df = df[df['Month'].isin(all_months)]
                 
             cols = [c for c in df.columns if c != 'Month']
             source_cols[name] = sorted(cols)
@@ -93,11 +96,14 @@ if master_df.empty:
     st.error("No data loaded. Please ensure your CSV files are in the folder and click 'Refresh Data'.")
     st.stop()
 
-active_months = st.sidebar.multiselect("Filter by Month:", all_months, default=[])
-active_months.sort(key=lambda m: all_months.index(m))
+# CHANGE: Replaced dropdown with individual checkboxes
+active_months = []
+for month in all_months:
+    if st.sidebar.checkbox(month, value=False):
+        active_months.append(month)
 
 if not active_months:
-    st.info("👈 Please select at least one Month from the sidebar to view your data.")
+    st.info("👈 Please check at least one Month from the sidebar to view your data.")
     st.stop()
 
 # Filter master data by selected months
@@ -150,16 +156,13 @@ with tab1:
 with tab2:
     st.header("Sales, Expenses & Cash Flow")
     
-    # Grab the available columns for each specific file
     sales_cols = source_cols.get("Sales", [])
     exp_cols = source_cols.get("Expenses", [])
     cash_cols = source_cols.get("Cash", [])
     
-    # Identify the exact Card and Cash columns from the Sales sheet
     sales_card_col = [c for c in sales_cols if c.strip().lower() == 'card']
     sales_cash_col = [c for c in sales_cols if c.strip().lower() == 'cash']
     
-    # Layout for Tab 2 Toggles
     col1, col2 = st.columns(2)
     with col1:
         selected_expenses = st.multiselect("Select Expenses (Top Inner Bar):", exp_cols, default=[])
@@ -174,7 +177,6 @@ with tab2:
     agg_df = df.groupby('Month', observed=True).sum(numeric_only=True)
     
     if not agg_df.empty:
-        # Calculate sums for the 4 graph components
         val_sales_card = agg_df[sales_card_col].sum(axis=1) if sales_card_col else pd.Series([0]*len(agg_df), index=agg_df.index)
         val_expenses = agg_df[selected_expenses].sum(axis=1) if selected_expenses else pd.Series([0]*len(agg_df), index=agg_df.index)
         val_sales_cash = agg_df[sales_cash_col].sum(axis=1) if sales_cash_col else pd.Series([0]*len(agg_df), index=agg_df.index)
@@ -198,8 +200,7 @@ with tab2:
             width=0.25
         ))
 
-        # BOTTOM HALF (Outer Thick Bar): Cash from Sales.csv
-        # We multiply by -1 to force it to point downward on the chart
+        # BOTTOM HALF (Outer Thick Bar): Cash from Sales.csv (Negative to point down)
         fig.add_trace(go.Bar(
             x=agg_df.index, y=-val_sales_cash,
             customdata=val_sales_cash, 
@@ -209,7 +210,7 @@ with tab2:
             width=0.5
         ))
 
-        # BOTTOM HALF (Inner Thin Bar): Toggled from Cash.csv
+        # BOTTOM HALF (Inner Thin Bar): Toggled from Cash.csv (Negative to point down)
         fig.add_trace(go.Bar(
             x=agg_df.index, y=-val_cash_sheet,
             customdata=val_cash_sheet,
@@ -222,7 +223,7 @@ with tab2:
         fig.update_layout(
             barmode='overlay',
             yaxis_title="Amount ($)",
-            yaxis_tickformat="$,.0f", # Formats axis cleanly to whole dollars
+            yaxis_tickformat="$,.0f", 
             hovermode="x unified",
             margin=dict(t=30, b=0, l=0, r=0)
         )
@@ -232,7 +233,6 @@ with tab2:
     # 2. DETAILED DATA TABLE
     st.subheader("📊 Financial Data Table")
     
-    # We combine Card and Cash (Sales) with whatever toggles you picked
     tab2_cols = sales_card_col + sales_cash_col + selected_expenses + selected_cash_sheet
     
     if tab2_cols:

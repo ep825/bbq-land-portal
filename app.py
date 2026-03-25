@@ -109,7 +109,7 @@ if not active_months:
 df = master_df[master_df['Month'].isin(active_months)].copy()
 df = df.sort_values(by='Month')
 
-# --- CALCULATE TOTAL SALES FOR PERCENTAGES ---
+# --- LOCATE TOTAL SALES COLUMN ---
 ts_col = next((c for c in df.columns if str(c).strip().lower() == 'total sales'), None)
 if ts_col:
     overall_total_sales = pd.to_numeric(df[ts_col], errors='coerce').sum()
@@ -131,12 +131,10 @@ with tab1:
     if selected_categories:
         view_df_cat = df[['Month'] + selected_categories].copy()
         
-        # Line Graph
         st.subheader("📈 Category Trends")
         graph_data_cat = view_df_cat.groupby('Month', observed=True)[selected_categories].sum()
         st.line_chart(graph_data_cat)
 
-        # Table
         st.subheader("📊 Category Data")
         cols_per_table = 6 
         chunks = [selected_categories[i:i + cols_per_table] for i in range(0, len(selected_categories), cols_per_table)]
@@ -240,71 +238,95 @@ with tab2:
         
         st.plotly_chart(fig, use_container_width=True)
 
-    # 2. DETAILED DATA TABLES (NOW SPLIT INTO SUB-TABS)
+    # 2. DETAILED DATA TABLES BY MONTH
     st.subheader("📊 Financial Data Tables")
     
     sub_tab_exp, sub_tab_cash = st.tabs(["💳 Card & Expenses", "💵 Cash Flow"])
     
-    # --- SUB TAB: EXPENSES ---
+    # --- SUB TAB: EXPENSES (Separated by Month) ---
     with sub_tab_exp:
         exp_table_cols = sales_card_col + selected_expenses
         
         if exp_table_cols:
-            view_df_exp = df[['Month'] + exp_table_cols].copy()
-            cols_per_table = 6 
-            chunks = [exp_table_cols[i:i + cols_per_table] for i in range(0, len(exp_table_cols), cols_per_table)]
+            for month in active_months:
+                st.markdown(f"#### 📅 {month}")
+                
+                # Filter down to just this specific month
+                month_df = df[df['Month'] == month].copy()
+                
+                # Calculate the total sales for THIS month only (for accurate percentages)
+                if ts_col:
+                    month_total_sales = pd.to_numeric(month_df[ts_col], errors='coerce').sum()
+                else:
+                    month_total_sales = 0
+                
+                view_df_exp = month_df[['Month'] + exp_table_cols].copy()
+                cols_per_table = 6 
+                chunks = [exp_table_cols[i:i + cols_per_table] for i in range(0, len(exp_table_cols), cols_per_table)]
 
-            for chunk in chunks:
-                current_cols = ['Month'] + chunk
-                temp_df = view_df_exp[current_cols].copy()
-                
-                totals = {"Month": "TOTAL"}
-                pcts = {"Month": "% of Total Sales"}
-                
-                for col in chunk:
-                    col_total = pd.to_numeric(temp_df[col], errors='coerce').sum()
-                    totals[col] = col_total
+                for chunk in chunks:
+                    current_cols = ['Month'] + chunk
+                    temp_df = view_df_exp[current_cols].copy()
                     
-                    if overall_total_sales > 0:
-                        pcts[col] = f"{(col_total / overall_total_sales) * 100:.2f}%"
-                    else:
-                        pcts[col] = "N/A"
+                    totals = {"Month": "TOTAL"}
+                    pcts = {"Month": f"% of {month} Sales"}
                     
-                totals_df = pd.DataFrame([totals, pcts])
-                final_chunk_df = pd.concat([temp_df, totals_df], ignore_index=True)
-                st.dataframe(final_chunk_df, use_container_width=True, hide_index=True)
-                st.write("")
+                    for col in chunk:
+                        col_total = pd.to_numeric(temp_df[col], errors='coerce').sum()
+                        totals[col] = col_total
+                        
+                        if month_total_sales > 0:
+                            pcts[col] = f"{(col_total / month_total_sales) * 100:.2f}%"
+                        else:
+                            pcts[col] = "N/A"
+                        
+                    totals_df = pd.DataFrame([totals, pcts])
+                    final_chunk_df = pd.concat([temp_df, totals_df], ignore_index=True)
+                    st.dataframe(final_chunk_df, use_container_width=True, hide_index=True)
+                
+                st.divider() # Adds a clean horizontal line between months
         else:
-            st.info("Select expenses above to generate the Card & Expenses table.")
+            st.info("Select expenses above to generate the Card & Expenses tables.")
 
-    # --- SUB TAB: CASH ---
+    # --- SUB TAB: CASH (Separated by Month) ---
     with sub_tab_cash:
         cash_table_cols = sales_cash_col + selected_cash_sheet
         
         if cash_table_cols:
-            view_df_cash = df[['Month'] + cash_table_cols].copy()
-            cols_per_table = 6 
-            chunks = [cash_table_cols[i:i + cols_per_table] for i in range(0, len(cash_table_cols), cols_per_table)]
+            for month in active_months:
+                st.markdown(f"#### 📅 {month}")
+                
+                month_df = df[df['Month'] == month].copy()
+                
+                if ts_col:
+                    month_total_sales = pd.to_numeric(month_df[ts_col], errors='coerce').sum()
+                else:
+                    month_total_sales = 0
+                
+                view_df_cash = month_df[['Month'] + cash_table_cols].copy()
+                cols_per_table = 6 
+                chunks = [cash_table_cols[i:i + cols_per_table] for i in range(0, len(cash_table_cols), cols_per_table)]
 
-            for chunk in chunks:
-                current_cols = ['Month'] + chunk
-                temp_df = view_df_cash[current_cols].copy()
-                
-                totals = {"Month": "TOTAL"}
-                pcts = {"Month": "% of Total Sales"}
-                
-                for col in chunk:
-                    col_total = pd.to_numeric(temp_df[col], errors='coerce').sum()
-                    totals[col] = col_total
+                for chunk in chunks:
+                    current_cols = ['Month'] + chunk
+                    temp_df = view_df_cash[current_cols].copy()
                     
-                    if overall_total_sales > 0:
-                        pcts[col] = f"{(col_total / overall_total_sales) * 100:.2f}%"
-                    else:
-                        pcts[col] = "N/A"
+                    totals = {"Month": "TOTAL"}
+                    pcts = {"Month": f"% of {month} Sales"}
                     
-                totals_df = pd.DataFrame([totals, pcts])
-                final_chunk_df = pd.concat([temp_df, totals_df], ignore_index=True)
-                st.dataframe(final_chunk_df, use_container_width=True, hide_index=True)
-                st.write("")
+                    for col in chunk:
+                        col_total = pd.to_numeric(temp_df[col], errors='coerce').sum()
+                        totals[col] = col_total
+                        
+                        if month_total_sales > 0:
+                            pcts[col] = f"{(col_total / month_total_sales) * 100:.2f}%"
+                        else:
+                            pcts[col] = "N/A"
+                        
+                    totals_df = pd.DataFrame([totals, pcts])
+                    final_chunk_df = pd.concat([temp_df, totals_df], ignore_index=True)
+                    st.dataframe(final_chunk_df, use_container_width=True, hide_index=True)
+                
+                st.divider() # Adds a clean horizontal line between months
         else:
-            st.info("Select cash payouts above to generate the Cash Flow table.")
+            st.info("Select cash payouts above to generate the Cash Flow tables.")

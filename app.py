@@ -96,7 +96,6 @@ if master_df.empty:
     st.error("No data loaded. Please ensure your CSV files are in the folder and click 'Refresh Data'.")
     st.stop()
 
-# CHANGE: Replaced dropdown with individual checkboxes
 active_months = []
 for month in all_months:
     if st.sidebar.checkbox(month, value=False):
@@ -109,6 +108,14 @@ if not active_months:
 # Filter master data by selected months
 df = master_df[master_df['Month'].isin(active_months)].copy()
 df = df.sort_values(by='Month')
+
+# --- CALCULATE TOTAL SALES FOR PERCENTAGES ---
+# Safely locate the 'Total sales' column regardless of exact capitalization
+ts_col = next((c for c in df.columns if str(c).strip().lower() == 'total sales'), None)
+if ts_col:
+    overall_total_sales = pd.to_numeric(df[ts_col], errors='coerce').sum()
+else:
+    overall_total_sales = 0
 
 # --- TABS ---
 tab1, tab2 = st.tabs(["🍽️ Category Breakdown", "💼 Financial Overview"])
@@ -140,10 +147,18 @@ with tab1:
             temp_df = view_df_cat[current_cols].copy()
             
             totals = {"Month": "TOTAL"}
+            pcts = {"Month": "% of Total Sales"}
+            
             for col in chunk:
-                totals[col] = pd.to_numeric(temp_df[col], errors='coerce').sum()
+                col_total = pd.to_numeric(temp_df[col], errors='coerce').sum()
+                totals[col] = col_total
                 
-            totals_df = pd.DataFrame([totals])
+                if overall_total_sales > 0:
+                    pcts[col] = f"{(col_total / overall_total_sales) * 100:.2f}%"
+                else:
+                    pcts[col] = "N/A"
+                
+            totals_df = pd.DataFrame([totals, pcts])
             final_chunk_df = pd.concat([temp_df, totals_df], ignore_index=True)
             st.dataframe(final_chunk_df, use_container_width=True, hide_index=True)
             st.write("")
@@ -245,10 +260,18 @@ with tab2:
             temp_df = view_df_fin[current_cols].copy()
             
             totals = {"Month": "TOTAL"}
+            pcts = {"Month": "% of Total Sales"}
+            
             for col in chunk:
-                totals[col] = pd.to_numeric(temp_df[col], errors='coerce').sum()
+                col_total = pd.to_numeric(temp_df[col], errors='coerce').sum()
+                totals[col] = col_total
                 
-            totals_df = pd.DataFrame([totals])
+                if overall_total_sales > 0:
+                    pcts[col] = f"{(col_total / overall_total_sales) * 100:.2f}%"
+                else:
+                    pcts[col] = "N/A"
+                
+            totals_df = pd.DataFrame([totals, pcts])
             final_chunk_df = pd.concat([temp_df, totals_df], ignore_index=True)
             st.dataframe(final_chunk_df, use_container_width=True, hide_index=True)
             st.write("")

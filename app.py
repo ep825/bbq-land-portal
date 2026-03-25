@@ -144,17 +144,11 @@ with tab1:
             month_total_sales = pd.to_numeric(month_df[ts_col], errors='coerce').sum() if ts_col else 0
             
             table_rows = []
-            sum_amount = 0
             
             for col in selected_categories:
                 amt = pd.to_numeric(month_df[col], errors='coerce').sum()
-                sum_amount += amt
                 pct = f"{(amt / month_total_sales) * 100:.2f}%" if month_total_sales > 0 else "N/A"
                 table_rows.append({"Item": col, "Amount": format_money(amt), "% of Sales": pct})
-            
-            # Total Row
-            tot_pct = f"{(sum_amount / month_total_sales) * 100:.2f}%" if month_total_sales > 0 else "N/A"
-            table_rows.append({"Item": "TOTAL", "Amount": format_money(sum_amount), "% of Sales": tot_pct})
             
             st.dataframe(pd.DataFrame(table_rows), use_container_width=True, hide_index=True)
             st.divider()
@@ -254,16 +248,11 @@ with tab2:
                 month_total_sales = pd.to_numeric(month_df[ts_col], errors='coerce').sum() if ts_col else 0
                 
                 table_rows = []
-                sum_amount = 0
                 
                 for col in exp_table_cols:
                     amt = pd.to_numeric(month_df[col], errors='coerce').sum()
-                    sum_amount += amt
                     pct = f"{(amt / month_total_sales) * 100:.2f}%" if month_total_sales > 0 else "N/A"
                     table_rows.append({"Item": col, "Amount": format_money(amt), "% of Sales": pct})
-                
-                tot_pct = f"{(sum_amount / month_total_sales) * 100:.2f}%" if month_total_sales > 0 else "N/A"
-                table_rows.append({"Item": "TOTAL", "Amount": format_money(sum_amount), "% of Sales": tot_pct})
                 
                 st.dataframe(pd.DataFrame(table_rows), use_container_width=True, hide_index=True)
                 st.divider()
@@ -282,16 +271,11 @@ with tab2:
                 month_total_sales = pd.to_numeric(month_df[ts_col], errors='coerce').sum() if ts_col else 0
                 
                 table_rows = []
-                sum_amount = 0
                 
                 for col in cash_table_cols:
                     amt = pd.to_numeric(month_df[col], errors='coerce').sum()
-                    sum_amount += amt
                     pct = f"{(amt / month_total_sales) * 100:.2f}%" if month_total_sales > 0 else "N/A"
                     table_rows.append({"Item": col, "Amount": format_money(amt), "% of Sales": pct})
-                
-                tot_pct = f"{(sum_amount / month_total_sales) * 100:.2f}%" if month_total_sales > 0 else "N/A"
-                table_rows.append({"Item": "TOTAL", "Amount": format_money(sum_amount), "% of Sales": tot_pct})
                 
                 st.dataframe(pd.DataFrame(table_rows), use_container_width=True, hide_index=True)
                 st.divider()

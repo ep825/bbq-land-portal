@@ -80,7 +80,6 @@ def load_data():
         
     return master_df, source_cols, errors
 
-# Helper function to format currency nicely in the tables
 def format_money(val):
     if pd.isna(val): return "$0.00"
     return f"${val:,.2f}" if val >= 0 else f"-${abs(val):,.2f}"
@@ -112,7 +111,6 @@ if not active_months:
 df = master_df[master_df['Month'].isin(active_months)].copy()
 df = df.sort_values(by='Month')
 
-# Locate Total Sales column for percentage math
 ts_col = next((c for c in df.columns if str(c).strip().lower() == 'total sales'), None)
 
 # --- TABS ---
@@ -136,7 +134,6 @@ with tab1:
 
         st.subheader("📊 Category Data")
         
-        # PIVOTED TABLE LOGIC: Separated by Month
         for month in active_months:
             st.markdown(f"#### 📅 {month}")
             month_df = df[df['Month'] == month].copy()
@@ -193,38 +190,65 @@ with tab2:
             x=agg_df.index, y=val_sales_card,
             name='Income: Card (Sales)',
             marker_color='#2ca02c', 
-            width=0.5
+            width=0.5,
+            hovertemplate="Income (Card): $%{y:,.2f}<extra></extra>"
         ))
 
         fig.add_trace(go.Bar(
             x=agg_df.index, y=val_expenses,
             name='Output: Selected Expenses',
             marker_color='#d62728', 
-            width=0.25
+            width=0.25,
+            hovertemplate="Output (Expenses): $%{y:,.2f}<extra></extra>"
         ))
 
         fig.add_trace(go.Bar(
             x=agg_df.index, y=-val_sales_cash,
             customdata=val_sales_cash, 
-            hovertemplate="%{x}<br>Income: Cash (Sales): $%{customdata:,.2f}<extra></extra>",
             name='Income: Cash (Sales)',
             marker_color='#1f77b4', 
-            width=0.5
+            width=0.5,
+            hovertemplate="Income (Cash): $%{customdata:,.2f}<extra></extra>"
         ))
 
         fig.add_trace(go.Bar(
             x=agg_df.index, y=-val_cash_sheet,
             customdata=val_cash_sheet,
-            hovertemplate="%{x}<br>Output: Selected Cash: $%{customdata:,.2f}<extra></extra>",
             name='Output: Selected Cash',
             marker_color='#ff7f0e', 
-            width=0.25
+            width=0.25,
+            hovertemplate="Output (Cash Payouts): $%{customdata:,.2f}<extra></extra>"
         ))
+
+        # --- DYNAMIC POSITIVE Y-AXIS FORMATTING ---
+        max_up = max(val_sales_card.max(), val_expenses.max()) if len(val_sales_card) else 0
+        max_down = max(val_sales_cash.max(), val_cash_sheet.max()) if len(val_sales_cash) else 0
+        highest_val = max(max_up, max_down)
+        
+        if pd.isna(highest_val) or highest_val == 0:
+            highest_val = 1000
+            
+        if highest_val <= 1000: step = 200
+        elif highest_val <= 5000: step = 1000
+        elif highest_val <= 10000: step = 2000
+        elif highest_val <= 50000: step = 5000
+        elif highest_val <= 100000: step = 10000
+        else: step = 20000
+        
+        limit = int((highest_val // step) + 2) * step
+        tickvals = list(range(-limit, limit + step, step))
+        ticktext = [f"${abs(v):,.0f}" for v in tickvals] # Forces all ticks to drop the negative sign
 
         fig.update_layout(
             barmode='overlay',
-            yaxis_title="Amount ($)",
-            yaxis_tickformat="$,.0f", 
+            yaxis=dict(
+                title="Amount ($)",
+                tickvals=tickvals,
+                ticktext=ticktext,
+                zeroline=True,
+                zerolinewidth=2,
+                zerolinecolor='black'
+            ),
             hovermode="x unified",
             margin=dict(t=30, b=0, l=0, r=0)
         )
@@ -236,7 +260,6 @@ with tab2:
     
     sub_tab_exp, sub_tab_cash = st.tabs(["💳 Card & Expenses", "💵 Cash Flow"])
     
-    # --- PIVOTED SUB TAB: EXPENSES ---
     with sub_tab_exp:
         exp_table_cols = sales_card_col + selected_expenses
         
@@ -259,7 +282,6 @@ with tab2:
         else:
             st.info("Select expenses above to generate the Card & Expenses tables.")
 
-    # --- PIVOTED SUB TAB: CASH ---
     with sub_tab_cash:
         cash_table_cols = sales_cash_col + selected_cash_sheet
         

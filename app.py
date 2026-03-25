@@ -22,6 +22,7 @@ def load_data():
     def clean_currency(x):
         if isinstance(x, str):
             try:
+                # This handles both "$1,000.00" and negative "-$1,000.00" formats
                 return float(x.replace('$', '').replace(',', '').strip())
             except ValueError:
                 return x
@@ -81,7 +82,7 @@ master_df, source_cols, load_errors = load_data()
 
 # --- SIDEBAR: MONTHS ONLY ---
 st.sidebar.header("🗓️ Select Months")
-st.sidebar.button("🔄 Refresh Data (Clear Cache)", on_click=st.cache_data.clear)
+st.sidebar.button("🔄 Refresh Data", on_click=st.cache_data.clear)
 st.sidebar.divider()
 
 if load_errors:
@@ -89,7 +90,7 @@ if load_errors:
         st.error(err)
 
 if master_df.empty:
-    st.error("No data loaded. Please ensure your CSV files are in the folder and click 'Refresh Data' in the sidebar.")
+    st.error("No data loaded. Please ensure your CSV files are in the folder and click 'Refresh Data'.")
     st.stop()
 
 active_months = st.sidebar.multiselect("Filter by Month:", all_months, default=[])
@@ -149,75 +150,79 @@ with tab1:
 with tab2:
     st.header("Sales, Expenses & Cash Flow")
     
+    # Grab the available columns for each specific file
     sales_cols = source_cols.get("Sales", [])
     exp_cols = source_cols.get("Expenses", [])
     cash_cols = source_cols.get("Cash", [])
     
-    sales_cash_col = [c for c in sales_cols if c.lower() == 'cash']
-    sales_excl_cash = [c for c in sales_cols if c.lower() != 'cash']
+    # Identify the exact Card and Cash columns from the Sales sheet
+    sales_card_col = [c for c in sales_cols if c.strip().lower() == 'card']
+    sales_cash_col = [c for c in sales_cols if c.strip().lower() == 'cash']
     
-    # Checkbox layout
+    # Layout for Tab 2 Toggles
     col1, col2 = st.columns(2)
     with col1:
-        selected_expenses = st.multiselect("Select Expenses:", exp_cols, default=[])
+        selected_expenses = st.multiselect("Select Expenses (Top Inner Bar):", exp_cols, default=[])
     with col2:
-        selected_cash = st.multiselect("Select Cash Accounts:", cash_cols, default=[])
+        selected_cash_sheet = st.multiselect("Select Cash Payouts (Bottom Inner Bar):", cash_cols, default=[])
 
     st.divider()
 
     # 1. DOUBLE-SIDED BAR GRAPH
-    st.subheader("⚖️ Revenue vs. Output")
+    st.subheader("⚖️ Income vs. Outputs")
     
     agg_df = df.groupby('Month', observed=True).sum(numeric_only=True)
     
     if not agg_df.empty:
-        val_sales_total = agg_df[sales_excl_cash].sum(axis=1) if sales_excl_cash else pd.Series([0]*len(agg_df), index=agg_df.index)
+        # Calculate sums for the 4 graph components
+        val_sales_card = agg_df[sales_card_col].sum(axis=1) if sales_card_col else pd.Series([0]*len(agg_df), index=agg_df.index)
         val_expenses = agg_df[selected_expenses].sum(axis=1) if selected_expenses else pd.Series([0]*len(agg_df), index=agg_df.index)
         val_sales_cash = agg_df[sales_cash_col].sum(axis=1) if sales_cash_col else pd.Series([0]*len(agg_df), index=agg_df.index)
-        val_cash_sheet = agg_df[selected_cash].sum(axis=1) if selected_cash else pd.Series([0]*len(agg_df), index=agg_df.index)
+        val_cash_sheet = agg_df[selected_cash_sheet].sum(axis=1) if selected_cash_sheet else pd.Series([0]*len(agg_df), index=agg_df.index)
 
         fig = go.Figure()
 
-        # Top Half - Outer Thick Bar
+        # TOP HALF (Outer Thick Bar): Card from Sales.csv
         fig.add_trace(go.Bar(
-            x=agg_df.index, y=val_sales_total,
-            name='Total Sales (Excl. Cash)',
-            marker_color='#2ca02c', 
+            x=agg_df.index, y=val_sales_card,
+            name='Income: Card (Sales)',
+            marker_color='#2ca02c', # Green
             width=0.5
         ))
 
-        # Top Half - Inner Thin Bar
+        # TOP HALF (Inner Thin Bar): Toggled from Expenses.csv
         fig.add_trace(go.Bar(
             x=agg_df.index, y=val_expenses,
-            name='Selected Expenses',
-            marker_color='#d62728', 
+            name='Output: Selected Expenses',
+            marker_color='#d62728', # Red
             width=0.25
         ))
 
-        # Bottom Half - Outer Thick Bar
+        # BOTTOM HALF (Outer Thick Bar): Cash from Sales.csv
+        # We multiply by -1 to force it to point downward on the chart
         fig.add_trace(go.Bar(
             x=agg_df.index, y=-val_sales_cash,
             customdata=val_sales_cash, 
-            hovertemplate="%{x}<br>Sales Cash: $%{customdata:,.2f}<extra></extra>",
-            name='Sales Sheet (Cash)',
-            marker_color='#1f77b4', 
+            hovertemplate="%{x}<br>Income: Cash (Sales): $%{customdata:,.2f}<extra></extra>",
+            name='Income: Cash (Sales)',
+            marker_color='#1f77b4', # Blue
             width=0.5
         ))
 
-        # Bottom Half - Inner Thin Bar
+        # BOTTOM HALF (Inner Thin Bar): Toggled from Cash.csv
         fig.add_trace(go.Bar(
             x=agg_df.index, y=-val_cash_sheet,
             customdata=val_cash_sheet,
-            hovertemplate="%{x}<br>Cash Sheet: $%{customdata:,.2f}<extra></extra>",
-            name='Selected Cash Sheet',
-            marker_color='#ff7f0e', 
+            hovertemplate="%{x}<br>Output: Selected Cash: $%{customdata:,.2f}<extra></extra>",
+            name='Output: Selected Cash',
+            marker_color='#ff7f0e', # Orange
             width=0.25
         ))
 
         fig.update_layout(
             barmode='overlay',
             yaxis_title="Amount ($)",
-            yaxis_tickformat="$,.0f",
+            yaxis_tickformat="$,.0f", # Formats axis cleanly to whole dollars
             hovermode="x unified",
             margin=dict(t=30, b=0, l=0, r=0)
         )
@@ -225,9 +230,10 @@ with tab2:
         st.plotly_chart(fig, use_container_width=True)
 
     # 2. DETAILED DATA TABLE
-    st.subheader("📊 Financial Data")
+    st.subheader("📊 Financial Data Table")
     
-    tab2_cols = sales_cols + selected_expenses + selected_cash
+    # We combine Card and Cash (Sales) with whatever toggles you picked
+    tab2_cols = sales_card_col + sales_cash_col + selected_expenses + selected_cash_sheet
     
     if tab2_cols:
         view_df_fin = df[['Month'] + tab2_cols].copy()
